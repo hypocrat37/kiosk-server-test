@@ -1,0 +1,15 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Kiosk{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<header>{% block header %}<h1>RoomZero</h1>{% endblock %}</header>
+<main>{% block content %}{% endblock %}</main>
+<footer><small>&copy; 2025 RoomZero</small></footer>
+</body>
+</html>

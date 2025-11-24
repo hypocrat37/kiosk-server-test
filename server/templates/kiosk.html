@@ -1,0 +1,143 @@
+
+{% extends "base.html" %}
+{% block title %}Kiosk{% endblock %}
+{% block body_class %}kiosk-page{% endblock %}
+{% block content %}
+<section class="kiosk portrait">
+  <!-- Title bar -->
+  <div class="kt-titlebar">
+    <div class="kt-title">{{ game_name }}</div>
+  </div>
+
+  <!-- Icons row (non-interactive) -->
+  <div class="kt-icons">
+    <button class="kt-icon" type="button" data-trait="physical">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M13 2L3 14h7v8l11-14h-8z"/></svg>
+      <div class="label">PHYSICAL</div>
+    </button>
+    <button class="kt-icon" type="button" data-trait="mental">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M9 21h6v-2H9v2zm3-20C7.48 1 4 4.48 4 9c0 3.53 2.61 6.43 6 6.92V18h4v-2.08c3.39-.49 6-3.39 6-6.92 0-4.52-3.48-8-8-8z"/></svg>
+      <div class="label">MENTAL</div>
+    </button>
+    <button class="kt-icon" type="button" data-trait="skill">
+      <svg viewBox="0 0 24 24" class="icon"><path d="M9 11.75V8a3 3 0 0 1 6 0v3.75l2.25-1.5a2 2 0 1 1 2.5 3.125l-6.25 4.167V22h-3v-4.458L4.25 13.375A2 2 0 1 1 6.75 10.25L9 11.75z"/></svg>
+      <div class="label">SKILL</div>
+    </button>
+  </div>
+
+  <!-- Mode selection -->
+  <div class="kt-section">
+    <div class="kt-heading">SELECT GAME MODE</div>
+    <div id="modeList" class="mode-list pill-grid"></div>
+  </div>
+
+  <!-- Player scan circles -->
+  <div class="kt-players">
+    <ul id="queueList" class="player-grid"></ul>
+    
+<div class="scan-prompt" id="scanPrompt">SCAN WRISTBAND TO START</div>
+<div id="coinStage" class="coin-stage" aria-hidden="true"></div>
+
+    </div>
+  </div>
+
+  <!-- Avatar splash when a player is queued -->
+  <div id="splash">
+    <img id="splashAvatar" src="/static/avatars/default.png" alt="Player avatar">
+    <div class="name" id="splashName"></div>
+  </div>
+
+  <!-- Status text for errors, scans, and dev helpers -->
+  <div id="status" class="kt-status"></div>
+
+  <!-- Footer controls -->
+  <div class="kt-footer">
+    <div class="kt-wait">
+      <div class="hourglass" aria-hidden="true">⌛</div>
+      <div class="wait-text"><span>WAIT</span><strong id="waitMins">READY</strong></div>
+    </div>
+
+    <button id="startBtn" class="kt-start" title="Start Game">
+      <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="ring"/><polygon points="40,30 75,50 40,70" class="play"/></svg>
+    </button>
+
+    <button class="kt-objectives" id="objectivesBtn">OBJECTIVES</button>
+  </div>
+
+  <!-- Waiting overlay if a game is in progress -->
+  <div id="waitingOverlay" class="waiting hidden">
+    <div class="waiting-inner">A game is already running here.<br/>Please wait for the next round…</div>
+  </div>
+
+  <!-- Player profile / history overlay -->
+  <div id="profileOverlay" class="profile-overlay hidden" aria-hidden="true">
+    <div class="profile-card">
+      <div class="profile-header">
+        <h2 id="profileTitle">Player History</h2>
+        <button id="profileClose" class="btn small" type="button">Close</button>
+      </div>
+      <div id="profileQueueStatus" class="profile-queue-status" aria-live="polite"></div>
+      <div id="profileHistory" class="profile-history-body">
+        <!-- Filled by kiosk.js when a player taps their profile -->
+      </div>
+      <div class="profile-footer">
+        <button id="profileEdit" class="btn small" type="button">Edit Profile</button>
+        <button id="profileLeave" class="btn small leave-queue" type="button">Leave Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Objectives overlay -->
+  <div id="objectivesOverlay" class="objectives-overlay hidden" aria-hidden="true">
+    <div class="objectives-card">
+      <div class="objectives-header">
+        <h2>Objectives</h2>
+        <button id="objectivesClose" class="btn small" type="button">Close</button>
+      </div>
+      <ul id="objectivesList" class="objectives-list">
+        <!-- Filled by kiosk.js when Objectives is tapped -->
+      </ul>
+    </div>
+  </div>
+
+  <!-- Edit profile overlay -->
+  <div id="profileEditOverlay" class="profile-overlay hidden" aria-hidden="true">
+    <div class="profile-card">
+      <div class="profile-header">
+        <h2>Edit Profile</h2>
+        <button id="profileEditClose" class="btn small" type="button">Close</button>
+      </div>
+      <div class="profile-history-body">
+        <div class="profile-edit-avatar">
+          <img id="profileEditAvatar" src="/static/avatars/default.png" alt="Avatar">
+          <button id="profileRandomAvatar" class="btn small" type="button">Random Avatar</button>
+        </div>
+        <div class="profile-edit-field">
+          <label for="profileEditName">Name</label>
+          <input id="profileEditName" type="text" autocomplete="off">
+        </div>
+        <div id="profileEditMsg" class="status small" style="margin-top:8px;"></div>
+        <div class="profile-edit-actions">
+          <button id="profileEditSave" class="btn small" type="button">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trait (Physical/Mental/Skill) overlay -->
+  <div id="traitOverlay" class="trait-overlay hidden" aria-hidden="true">
+    <div class="trait-card">
+      <div class="trait-header">
+        <h2 id="traitTitle">Physical</h2>
+        <button id="traitClose" class="btn small" type="button">Close</button>
+      </div>
+      <div class="trait-body">
+        <p id="traitDescription"></p>
+        <div id="traitLevel" class="trait-level"></div>
+      </div>
+    </div>
+  </div>
+</section>
+<script>window.KIOSK_ID="{{ kiosk_id }}"; window.GAME_ID="{{ game_id }}"; window.API_KEY="{{ api_key }}";</script>
+<script src="/static/js/kiosk.js"></script>
+{% endblock %}

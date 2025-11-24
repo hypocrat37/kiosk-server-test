@@ -1,0 +1,51 @@
+How to Run the Kiosk System Template (FastAPI + RFID)
+---------------------------------------------------
+
+1. Prerequisites
+   - Install Python 3.11+ and pip.
+   - (Optional) Install Docker Desktop if you plan to try the Postgres stack under docker/.
+
+2. Clone or download this repository, then open a terminal in the project root (folder containing README.md).
+
+3. Create and activate a virtual environment so dependencies stay isolated:
+   python -m venv .venv
+   source .venv/bin/activate   # On Windows use: .venv\Scripts\activate
+
+4. Install Python dependencies:
+   pip install -r requirements.txt
+
+5. Generate a Fernet key (used to encrypt player emails) and copy it for later:
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+6. Prepare environment variables:
+   - Copy the sample file: cp .env.sample .env
+   - Open .env in your editor and set:
+     FERNET_KEY=<value from step 5>
+     KIOSK_KEYS=alpha1:alpha-secret,profile1:profile-secret   # adjust as needed
+     GAME_KEYS=laser_tag:laser-secret                         # add more pairs if needed
+     (Optional) DATABASE_URL=postgresql+psycopg2://...        # leave default for SQLite
+
+7. Initialize the database schema (defaults to SQLite file kiosk.db):
+   python scripts/init_db.py
+
+8. Start the FastAPI server with auto-reload for development:
+*****
+   uvicorn server.app:app --reload
+*****
+   - The kiosk UI is now reachable at http://127.0.0.1:8000/kiosk?kiosk_id=alpha1&game_id=laser_tag
+   - The profile kiosk lives at http://127.0.0.1:8000/kiosk/profile
+
+9. (On each physical kiosk) start the RFID bridge agent:
+   cd kiosk_agent
+   pip install -r requirements.txt
+   python agent.py
+   - Update kiosk_agent/config.yaml if your reader is not /dev/ttyUSB0 or uses a different baud rate.
+
+10. (Optional) Launch the reference game client to observe queue/session broadcasts:
+    cd game_client
+    pip install websockets requests
+    python client.py --server http://127.0.0.1:8000 --game_id laser_tag --api_key laser-secret
+
+11. Scan an RFID tag on the kiosk. Known tags appear in the queue, unknown tags are directed to the profile kiosk. Use the kiosk UI to start a game session and watch the client logs for broadcast events.
+
+12. When finished, stop the server with Ctrl+C and deactivate the virtual environment via: deactivate

@@ -1,0 +1,14 @@
+
+[Unit]
+Description=Kiosk RFID Agent
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/kiosk_agent
+ExecStart=/usr/bin/python3 /opt/kiosk_agent/agent.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

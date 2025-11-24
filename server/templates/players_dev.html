@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+{% block title %}Developer — Players{% endblock %}
+{% block body_class %}admin-page{% endblock %}
+{% block header %}
+  <img src="/static/Logo-01.png" alt="RoomZero Logo" class="brand-logo">
+{% endblock %}
+{% block content %}
+<section>
+  <h2>Developer Tools — Players</h2>
+  <p id="playersStatus" class="status small">Loading players…</p>
+
+  <div class="ops-links">
+    <label>Filter by username
+      <input id="playerFilter" type="text" placeholder="dev_player_" />
+    </label>
+    <button class="btn small" id="refreshPlayersBtn">Refresh</button>
+    <button class="btn small" id="editWordsBtn" style="margin-left:8px;">Edit Username Word Lists</button>
+    <button class="btn small" id="editBlockedBtn" style="margin-left:8px;">Manage Blocked Names</button>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Avatar</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="playersBody"></tbody>
+  </table>
+</section>
+<div id="wordsOverlay" class="history-overlay hidden" aria-hidden="true">
+  <div class="history-card">
+    <div class="history-header">
+      <h3>Username Word Lists</h3>
+      <button id="wordsClose" class="btn small" type="button">Close</button>
+    </div>
+    <div class="history-table-wrap">
+      <div id="wordsStatus" class="status small" style="margin-bottom:8px;">Loading…</div>
+      <div class="word-lists">
+        <div class="word-column">
+          <h4>Adjectives</h4>
+          <ul id="adjList" class="word-list"></ul>
+          <div class="word-add">
+            <input id="newAdj" type="text" placeholder="bright" />
+            <button class="btn small" id="addAdjBtn" type="button">Add</button>
+          </div>
+        </div>
+        <div class="word-column">
+          <h4>Nouns</h4>
+          <ul id="nounList" class="word-list"></ul>
+          <div class="word-add">
+            <input id="newNoun" type="text" placeholder="tiger" />
+            <button class="btn small" id="addNounBtn" type="button">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="blockedOverlay" class="history-overlay hidden" aria-hidden="true">
+  <div class="history-card">
+    <div class="history-header">
+      <h3>Blocked Display Names</h3>
+      <button id="blockedClose" class="btn small" type="button">Close</button>
+    </div>
+    <div class="history-table-wrap">
+      <div id="blockedStatus" class="status small" style="margin-bottom:8px;">Loading…</div>
+      <div class="word-lists">
+        <div class="word-column">
+          <h4>Blocked Words</h4>
+          <ul id="blockedList" class="word-list"></ul>
+          <div class="word-add">
+            <input id="newBlocked" type="text" placeholder="Add blocked word" />
+            <button class="btn small" id="addBlockedBtn" type="button">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const statusEl = document.getElementById('playersStatus');
+  const tbody = document.getElementById('playersBody');
+  const filterInput = document.getElementById('playerFilter');
+  const refreshBtn = document.getElementById('refreshPlayersBtn');
+  const editWordsBtn = document.getElementById('editWordsBtn');
+  const editBlockedBtn = document.getElementById('editBlockedBtn');
+
+  function setStatus(text, kind){
+    statusEl.textContent = text || '';
+    statusEl.setAttribute('data-kind', kind || 'ok');
+  }
+
+  async function loadPlayers(){
+    try {
+      setStatus('Loading players…', 'warn');
+      const resp = await fetch('/players?limit=500');
+      if (!resp.ok) {
+        setStatus('Failed to load players.', 'err');
+        return;
+      }
+      const data = await resp.json();
+      const filter = (filterInput.value || '').trim().toLowerCase();
+      tbody.innerHTML = '';
+      data.forEach(p => {
+        if (filter && !(p.username || '').toLowerCase().includes(filter)) {
+          return;
+        }
+        const tr = document.createElement('tr');
+      const avatarHtml = p.avatar_url
+          ? `<img src="${p.avatar_url}" alt="${p.username || ''}" class="dev-avatar" />`
+          : '<span style="opacity:.6;">None</span>';
+        tr.innerHTML = `
+          <td>${p.id}</td>
+          <td>${p.username || ''}</td>
+          <td>${p.name || ''}</td>
+          <td>${p.email || ''}</td>
+          <td>${avatarHtml}</td>
+          <td>
+            <input type="file" class="avatar-input" data-player-id="${p.id}" accept="image/*" style="display:none;">
+            <button class="btn small" data-action="choose-avatar" data-player-id="${p.id}">Change Avatar</button>
+            <button class="btn small" data-action="delete-player" data-player-id="${p.id}" style="margin-left:4px;">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      setStatus(`Loaded ${tbody.children.length} players.`, 'ok');
+    } catch (e) {
+      console.error(e);
+      setStatus('Error while loading players.', 'err');
+    }
+  }
+
+  refreshBtn.addEventListener('click', (e)=>{ e.preventDefault(); loadPlayers(); });
+  filterInput.addEventListener('input', ()=>{ loadPlayers(); });
+
+  tbody.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const playerId = btn.getAttribute('data-player-id');
+    if (!playerId) return;
+
+    if (action === 'choose-avatar') {
+      const input = tbody.querySelector(`input.avatar-input[data-player-id="${playerId}"]`);
+      if (input) {
+        input.click();
+      }
+    } else if (action === 'delete-player') {
+      if (!window.confirm(`Delete player #${playerId}? This will remove their tags and session records.`)) {
+        return;
+      }
+      setStatus(`Deleting player #${playerId}…`, 'warn');
+      try {
+        const resp = await fetch(`/players/${encodeURIComponent(playerId)}`, {
+          method: 'DELETE'
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.detail || 'Failed to delete player');
+        }
+        setStatus(`Deleted player #${playerId}.`, 'ok');
+        await loadPlayers();
+      } catch (err) {
+        console.error(err);
+        setStatus('Error deleting player.', 'err');
+      }
+    }
+  });
+
+  tbody.addEventListener('change', async (e)=>{
+    const input = e.target.closest('input.avatar-input');
+    if (!input || !input.files || !input.files.length) return;
+    const playerId = input.getAttribute('data-player-id');
+    const file = input.files[0];
+    const fd = new FormData();
+    fd.append('file', file);
+    setStatus(`Uploading avatar for player #${playerId}…`, 'warn');
+    try {
+      const resp = await fetch(`/players/${encodeURIComponent(playerId)}/avatar`, {
+        method: 'POST',
+        body: fd
+      });
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Upload failed');
+      }
+      setStatus(`Avatar updated for ${data.username || ('player #' + data.id)}.`, 'ok');
+      await loadPlayers();
+    } catch (err) {
+      console.error(err);
+      setStatus('Error uploading avatar.', 'err');
+    } finally {
+      input.value = '';
+    }
+  });
+
+  loadPlayers();
+
+  // Username word lists overlay
+  const wordsOverlay = document.getElementById('wordsOverlay');
+  const wordsClose = document.getElementById('wordsClose');
+  const wordsStatus = document.getElementById('wordsStatus');
+  const adjListEl = document.getElementById('adjList');
+  const nounListEl = document.getElementById('nounList');
+  const newAdjInput = document.getElementById('newAdj');
+  const newNounInput = document.getElementById('newNoun');
+  const addAdjBtn = document.getElementById('addAdjBtn');
+  const addNounBtn = document.getElementById('addNounBtn');
+
+    function setWordsStatus(text, kind){
+      if (!wordsStatus) return;
+      wordsStatus.textContent = text || '';
+      wordsStatus.setAttribute('data-kind', kind || 'ok');
+    }
+
+  async function loadWords(){
+    if (!wordsOverlay) return;
+    setWordsStatus('Loading word lists…', 'warn');
+    try {
+      const resp = await fetch('/players/words');
+      if (!resp.ok) {
+        setWordsStatus('Failed to load word lists.', 'err');
+        return;
+      }
+      const data = await resp.json();
+      adjListEl.innerHTML = '';
+      nounListEl.innerHTML = '';
+      let adjCount = 0;
+      let nounCount = 0;
+      (data.adjectives || []).forEach((item) => {
+        const w = item.word || '';
+        const builtin = !!item.builtin;
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="word-label">${w}</span>` + (builtin ? '' : ` <button class="btn small" data-action="delete-word" data-kind="adj" data-word="${w}">Delete</button>`);
+        adjListEl.appendChild(li);
+        adjCount += 1;
+      });
+      (data.nouns || []).forEach((item) => {
+        const w = item.word || '';
+        const builtin = !!item.builtin;
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="word-label">${w}</span>` + (builtin ? '' : ` <button class="btn small" data-action="delete-word" data-kind="noun" data-word="${w}">Delete</button>`);
+        nounListEl.appendChild(li);
+        nounCount += 1;
+      });
+      setWordsStatus(`Loaded ${adjCount} adjectives and ${nounCount} nouns.`, 'ok');
+    } catch (e) {
+      console.error(e);
+      setWordsStatus('Error while loading word lists.', 'err');
+    }
+  }
+
+  function openWordsOverlay(){
+    if (!wordsOverlay) return;
+    wordsOverlay.classList.remove('hidden');
+    wordsOverlay.setAttribute('aria-hidden', 'false');
+    loadWords();
+  }
+
+  function closeWordsOverlay(){
+    if (!wordsOverlay) return;
+    wordsOverlay.classList.add('hidden');
+    wordsOverlay.setAttribute('aria-hidden', 'true');
+  }
+
+  if (editWordsBtn) {
+    editWordsBtn.addEventListener('click', (e)=>{ e.preventDefault(); openWordsOverlay(); });
+  }
+  if (wordsClose) {
+    wordsClose.addEventListener('click', (e)=>{ e.preventDefault(); closeWordsOverlay(); });
+  }
+  if (wordsOverlay) {
+    wordsOverlay.addEventListener('click', (e)=>{
+      if (e.target === wordsOverlay) {
+        closeWordsOverlay();
+      }
+    });
+  }
+  document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && wordsOverlay && !wordsOverlay.classList.contains('hidden')) {
+      closeWordsOverlay();
+    }
+  });
+
+  async function addWord(kind, inputEl){
+    const raw = (inputEl.value || '').trim().toLowerCase();
+    if (!raw) return;
+    const parts = raw.split(',').map(w => w.trim()).filter(Boolean);
+    if (!parts.length) return;
+    setWordsStatus(`Adding ${parts.length} ${kind === 'adj' ? 'adjective' : 'noun'}${parts.length===1?'':'s'}…`, 'warn');
+    try {
+      let added = 0;
+      let skipped = 0;
+      for (const word of parts) {
+        const resp = await fetch('/players/words', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, word })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (resp.ok && data.ok !== false) {
+          added += 1;
+        } else if (data && data.detail && /already/i.test(String(data.detail))) {
+          skipped += 1;
+        } else {
+          throw new Error((data && data.detail) || `Failed to add word "${word}"`);
+        }
+      }
+      inputEl.value = '';
+      await loadWords();
+      const msg = [];
+      if (added) msg.push(`Added ${added}`);
+      if (skipped) msg.push(`Skipped ${skipped} duplicate${skipped===1?'':'s'}`);
+      setWordsStatus(msg.join(', ') || 'No changes.', 'ok');
+    } catch (e) {
+      console.error(e);
+      setWordsStatus(e.message || 'Error while adding words.', 'err');
+    }
+  }
+
+  if (addAdjBtn && newAdjInput) {
+    addAdjBtn.addEventListener('click', (e)=>{ e.preventDefault(); addWord('adj', newAdjInput); });
+  }
+  if (addNounBtn && newNounInput) {
+    addNounBtn.addEventListener('click', (e)=>{ e.preventDefault(); addWord('noun', newNounInput); });
+  }
+
+  // Delete word buttons
+  if (adjListEl) {
+    adjListEl.addEventListener('click', async (e)=>{
+      const btn = e.target.closest('button[data-action="delete-word"]');
+      if (!btn) return;
+      const word = btn.getAttribute('data-word') || '';
+      if (!word) return;
+      if (!window.confirm(`Remove adjective "${word}" from the pool?`)) return;
+      setWordsStatus(`Removing adjective "${word}"…`, 'warn');
+      try {
+        const resp = await fetch(`/players/words?kind=adj&word=${encodeURIComponent(word)}`, {
+          method: 'DELETE'
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (!resp.ok || data.ok === false) {
+          setWordsStatus((data && data.detail) || 'Failed to delete word.', 'err');
+          return;
+        }
+        await loadWords();
+      } catch (err) {
+        console.error(err);
+        setWordsStatus('Error while deleting word.', 'err');
+      }
+    });
+  }
+  if (nounListEl) {
+    nounListEl.addEventListener('click', async (e)=>{
+      const btn = e.target.closest('button[data-action="delete-word"]');
+      if (!btn) return;
+      const word = btn.getAttribute('data-word') || '';
+      if (!word) return;
+      if (!window.confirm(`Remove noun "${word}" from the pool?`)) return;
+      setWordsStatus(`Removing noun "${word}"…`, 'warn');
+      try {
+        const resp = await fetch(`/players/words?kind=noun&word=${encodeURIComponent(word)}`, {
+          method: 'DELETE'
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (!resp.ok || data.ok === false) {
+          setWordsStatus((data && data.detail) || 'Failed to delete word.', 'err');
+          return;
+        }
+        await loadWords();
+      } catch (err) {
+        console.error(err);
+        setWordsStatus('Error while deleting word.', 'err');
+      }
+    });
+  }
+
+  // Blocked display names overlay
+  const blockedOverlay = document.getElementById('blockedOverlay');
+  const blockedClose = document.getElementById('blockedClose');
+  const blockedStatus = document.getElementById('blockedStatus');
+  const blockedList = document.getElementById('blockedList');
+  const newBlockedInput = document.getElementById('newBlocked');
+  const addBlockedBtn = document.getElementById('addBlockedBtn');
+
+  function setBlockedStatus(text, kind){
+    if (!blockedStatus) return;
+    blockedStatus.textContent = text || '';
+    blockedStatus.setAttribute('data-kind', kind || 'ok');
+  }
+
+  function openBlocked(){
+    if (!blockedOverlay) return;
+    blockedOverlay.classList.remove('hidden');
+    blockedOverlay.setAttribute('aria-hidden','false');
+    loadBlocked();
+  }
+
+  function closeBlocked(){
+    if (!blockedOverlay) return;
+    blockedOverlay.classList.add('hidden');
+    blockedOverlay.setAttribute('aria-hidden','true');
+  }
+
+  async function loadBlocked(){
+    if (!blockedList) return;
+    try {
+      setBlockedStatus('Loading blocked words…','warn');
+      const resp = await fetch('/players/blocked_words');
+      if (!resp.ok) throw new Error('Failed to load');
+      const data = await resp.json();
+      const custom = Array.isArray(data.words) ? data.words : [];
+      const defaults = Array.isArray(data.default) ? data.default : [];
+      const combined = [...defaults.map(w => ({ word: w, builtin: true })), ...custom.map(w => ({ word: w, builtin: false }))];
+      blockedList.innerHTML = '';
+      if (!combined.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No blocked words yet.';
+        blockedList.appendChild(li);
+      } else {
+        combined.forEach(({word: w, builtin})=>{
+          const li = document.createElement('li');
+          const badge = builtin ? ' <span class="badge warn" style="margin-left:6px;">default</span>' : '';
+          const delBtn = builtin ? '' : ` <button class="btn small" data-action="delete-blocked" data-word="${w}">Delete</button>`;
+          li.innerHTML = `<span class="word-label">${w}</span>${badge}${delBtn}`;
+          blockedList.appendChild(li);
+        });
+      }
+      const total = combined.length;
+      setBlockedStatus(`Loaded ${total} blocked word${total===1?'':'s'} (${defaults.length} default, ${custom.length} custom).`,'ok');
+    } catch (err) {
+      console.error(err);
+      setBlockedStatus('Error loading blocked words.','err');
+    }
+  }
+
+  async function addBlocked(){
+    const word = (newBlockedInput.value || '').trim();
+    if (!word) return;
+    setBlockedStatus('Adding word…','warn');
+    try {
+      const resp = await fetch('/players/blocked_words', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ word })
+      });
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Failed to add word');
+      }
+      newBlockedInput.value = '';
+      await loadBlocked();
+    } catch (err) {
+      console.error(err);
+      setBlockedStatus(err.message || 'Error adding word.','err');
+    }
+  }
+
+  if (editBlockedBtn) {
+    editBlockedBtn.addEventListener('click', (e)=>{ e.preventDefault(); openBlocked(); });
+  }
+  if (blockedClose) blockedClose.addEventListener('click', (e)=>{ e.preventDefault(); closeBlocked(); });
+  if (blockedOverlay) blockedOverlay.addEventListener('click', (e)=>{ if (e.target === blockedOverlay) closeBlocked(); });
+  if (addBlockedBtn) addBlockedBtn.addEventListener('click', (e)=>{ e.preventDefault(); addBlocked(); });
+  if (newBlockedInput) newBlockedInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); addBlocked(); }});
+
+  if (blockedList) {
+    blockedList.addEventListener('click', async (e)=>{
+      const btn = e.target.closest('button[data-action="delete-blocked"]');
+      if (!btn) return;
+      const word = btn.getAttribute('data-word') || '';
+      if (!word) return;
+      if (!window.confirm(`Remove "${word}" from blocked words?`)) return;
+      setBlockedStatus(`Removing "${word}"…`, 'warn');
+      try {
+        const resp = await fetch(`/players/blocked_words?word=${encodeURIComponent(word)}`, { method: 'DELETE' });
+        const data = await resp.json().catch(()=>({}));
+        if (!resp.ok || data.ok === false) {
+          throw new Error((data && data.detail) || 'Failed to delete word');
+        }
+        await loadBlocked();
+      } catch (err) {
+        console.error(err);
+        setBlockedStatus(err.message || 'Error deleting word.','err');
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

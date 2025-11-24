@@ -1,0 +1,15 @@
+
+{% extends "base.html" %}
+{% block title %}Create Profile{% endblock %}
+{% block content %}
+<section class="profile-create">
+  <h2>Create Player Profile</h2>
+  <form method="post" action="/ui/profile/create">
+    <input type="hidden" name="rfid_uid" value="{{ rfid_uid }}"/>
+    <div class="field"><label>Email</label><input name="email" type="email" required></div>
+    <div class="field"><label>Name</label><input name="name" type="text" required></div>
+    <div class="field"><label>Username</label><input name="username" type="text" required></div>
+    <div class="actions"><button type="submit">Create</button></div>
+  </form>
+</section>
+{% endblock %}

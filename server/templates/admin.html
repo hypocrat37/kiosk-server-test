@@ -1,0 +1,212 @@
+
+{% extends "base.html" %}
+{% block title %}Admin Monitor{% endblock %}
+{% block body_class %}admin-page{% endblock %}
+{% block header %}
+  <img src="/static/Logo-01.png" alt="Game Logo" class="brand-logo">
+{% endblock %}
+{% block content %}
+<section>
+  <h2>Operations — Kiosks</h2>
+  <div class="ops-links">
+    <a class="btn" href="/kiosk/profile" target="_blank">Open Profile Kiosk</a>
+    <a class="btn" href="/ui/dev" style="margin-left:8px;">Kiosk Dev Tools</a>
+    <a class="btn" href="/ui/players/dev" style="margin-left:8px;">Players Dev Tools</a>
+  </div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th id="gameSortHeader" class="sortable">Game</th><th>Kiosk</th><th>Game ID</th><th>Status</th><th>WS</th><th>Open</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="kioskRows"></tbody>
+  </table>
+</section>
+
+<!-- Game history overlay -->
+<div id="historyOverlay" class="history-overlay hidden" aria-hidden="true">
+  <div class="history-card">
+    <div class="history-header">
+      <h3 id="historyTitle">Game History</h3>
+      <button id="historyClose" class="btn small" type="button">Close</button>
+    </div>
+    <p id="historyStatusOverlay" class="status small">Loading…</p>
+    <div class="history-table-wrap">
+      <table class="table" id="historyTableOverlay">
+        <thead>
+          <tr>
+            <th>Started</th>
+            <th>Kiosk</th>
+            <th>Session</th>
+            <th>Player</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let gameSortDir = null; // 'asc' | 'desc' | null
+
+async function loadDetails() {
+  const data = await (await fetch('/ui/kiosks/details')).json();
+  const tbody = document.getElementById('kioskRows');
+  tbody.innerHTML = '';
+  let kiosks = data.kiosks.slice();
+  if (gameSortDir) {
+    kiosks.sort((a, b) => {
+      const nameA = (a.game_name || a.game_id || '').toLowerCase();
+      const nameB = (b.game_name || b.game_id || '').toLowerCase();
+      if (nameA === nameB) return 0;
+      if (gameSortDir === 'asc') {
+        return nameA < nameB ? -1 : 1;
+      }
+      return nameA < nameB ? 1 : -1;
+    });
+  }
+  for (const k of kiosks) {
+    const gameLabel = k.game_name || k.game_id || '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${gameLabel}</td>
+      <td>${k.kiosk_id}</td>
+      <td>${k.game_id ?? ''}</td>
+      <td><span class="badge ${k.status==='running'?'warn':'ok'}">${k.status}</span></td>
+      <td><span class="badge ${k.connected?'ok':'err'}">${k.connected?'Connected':'No link'}</span></td>
+      <td><a class="btn small" target="_blank" href="/kiosk?kiosk_id=${encodeURIComponent(k.kiosk_id)}&game_id=${encodeURIComponent(k.game_id ?? '')}">Open</a></td>
+      <td>
+        <button class="btn small" data-action="clear-queue" data-kiosk="${k.kiosk_id}">Clear Queue</button>
+        <button class="btn small" data-action="reset-kiosk" data-kiosk="${k.kiosk_id}">Reset All</button>
+        ${k.game_id ? `<button class="btn small" data-action="history" data-game="${k.game_id}">History</button>` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+loadDetails();
+setInterval(loadDetails, 3000);
+
+// Game column sort toggling
+const gameHeader = document.getElementById('gameSortHeader');
+if (gameHeader) {
+  gameHeader.addEventListener('click', () => {
+    gameSortDir = gameSortDir === 'asc' ? 'desc' : 'asc';
+    gameHeader.textContent = 'Game' + (gameSortDir === 'asc' ? ' ▲' : ' ▼');
+    loadDetails();
+  });
+}
+
+// History overlay wiring
+const historyOverlay = document.getElementById('historyOverlay');
+const historyClose = document.getElementById('historyClose');
+const historyTitle = document.getElementById('historyTitle');
+const historyStatus = document.getElementById('historyStatusOverlay');
+const historyTbody = document.querySelector('#historyTableOverlay tbody');
+
+function closeHistoryOverlay() {
+  if (!historyOverlay) return;
+  historyOverlay.classList.add('hidden');
+  historyOverlay.setAttribute('aria-hidden', 'true');
+}
+
+async function loadHistoryIntoOverlay(gameId) {
+  if (!historyStatus || !historyTbody) return;
+  historyStatus.textContent = 'Loading…';
+  historyTbody.innerHTML = '';
+  try {
+    const resp = await fetch(`/games/${encodeURIComponent(gameId)}/history`);
+    if (!resp.ok) {
+      historyStatus.textContent = 'Failed to load history.';
+      return;
+    }
+    const data = await resp.json();
+    const rows = data.sessions || [];
+    function fmt(ts) {
+      if (!ts) return '';
+      try {
+        const d = new Date(ts);
+        return d.toLocaleString();
+      } catch {
+        return ts;
+      }
+    }
+    for (const s of rows) {
+      const players = s.players && s.players.length ? s.players : [{player_id:null, username:'—', score:null}];
+      for (const p of players) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${fmt(s.started_at)}</td>
+          <td>${s.kiosk_id || ''}</td>
+          <td>${s.session_id}</td>
+          <td>${p.username ?? ('#'+p.player_id)}</td>
+          <td>${p.score ?? ''}</td>
+        `;
+        historyTbody.appendChild(tr);
+      }
+    }
+    historyStatus.textContent = rows.length ? `Showing ${rows.length} recent sessions.` : 'No sessions found for this game.';
+  } catch (e) {
+    console.error('Failed to load history', e);
+    historyStatus.textContent = 'Error while loading history.';
+  }
+}
+
+function openHistoryOverlay(gameId) {
+  if (!historyOverlay || !historyTitle) return;
+  historyTitle.textContent = `Game History — ${gameId}`;
+  historyOverlay.classList.remove('hidden');
+  historyOverlay.setAttribute('aria-hidden', 'false');
+  loadHistoryIntoOverlay(gameId);
+}
+
+if (historyClose) {
+  historyClose.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeHistoryOverlay();
+  });
+}
+if (historyOverlay) {
+  historyOverlay.addEventListener('click', (e) => {
+    if (e.target === historyOverlay) {
+      closeHistoryOverlay();
+    }
+  });
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && historyOverlay && !historyOverlay.classList.contains('hidden')) {
+    closeHistoryOverlay();
+  }
+});
+
+document.getElementById('kioskRows').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const kioskId = btn.getAttribute('data-kiosk');
+  const action = btn.getAttribute('data-action');
+  const gameId = btn.getAttribute('data-game');
+  if (!action) return;
+
+  try {
+    if (action === 'clear-queue') {
+      if (!kioskId) return;
+      if (!confirm(`Clear the queue for kiosk "${kioskId}"?`)) return;
+      await fetch(`/kiosks/${encodeURIComponent(kioskId)}/queue/reset`, { method: 'POST' });
+    } else if (action === 'reset-kiosk') {
+      if (!kioskId) return;
+      if (!confirm(`Reset queue and end any running game for kiosk "${kioskId}"?`)) return;
+      await fetch(`/kiosks/${encodeURIComponent(kioskId)}/reset`, { method: 'POST' });
+    } else if (action === 'history') {
+      if (!gameId) return;
+      openHistoryOverlay(gameId);
+      return;
+    }
+  } catch (e) {
+    console.error('Admin action failed', e);
+  }
+  loadDetails();
+});
+</script>
+{% endblock %}

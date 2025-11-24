@@ -1,0 +1,116 @@
+
+{% extends "base.html" %}
+{% block title %}Profile Kiosk{% endblock %}
+{% block body_class %}kiosk-page profile-kiosk-page{% endblock %}
+{% block content %}
+<section class="kiosk portrait profile-kiosk profile-create">
+  <!-- Title bar with logo -->
+  <div class="kt-titlebar">
+    <img src="/static/Logo-01.png" alt="RoomZero" class="brand-logo">
+  </div>
+
+  <div class="pk-body">
+    <div class="pk-scan-panel">
+      <div class="kt-heading pk-hero-title">BEGIN ROOMZERO</div>
+      <div class="scan-prompt" id="scanPrompt">
+        TAP WRISTBAND TO GET STARTED
+      </div>
+      <div id="scanStatus" class="status small">Waiting for a wristband scan…</div>
+    </div>
+
+    <div id="coinStage" class="coin-stage" aria-hidden="true"></div>
+
+    <div id="formWrap" class="profile-form hidden">
+      <h3>Create Profile</h3>
+      <form id="createForm">
+        <input type="hidden" name="rfid_uid" id="rfid_uid" />
+        <div class="field"><label>Email</label><input name="email" id="email" type="email" required></div>
+        <div class="actions"><button type="submit">Create</button></div>
+      </form>
+      <div id="msg" class="status"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+(function(){
+  const formWrap = document.getElementById('formWrap');
+  const msg = document.getElementById('msg');
+  const coinStage = document.getElementById('coinStage');
+  const scanStatus = document.getElementById('scanStatus');
+  const submitBtn = document.querySelector('#createForm button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+
+  function showForm(uid){
+    formWrap.classList.remove('hidden');
+    document.getElementById('rfid_uid').value = uid;
+    if (submitBtn) submitBtn.disabled = false;
+  }
+
+  function animateCoin(label, avatarUrl){
+    const coin = document.createElement('div');
+    coin.className = 'coin rise';
+    const face = document.createElement('div');
+    face.className = 'face';
+    if (avatarUrl) {
+      face.style.backgroundImage = `url(${avatarUrl})`;
+      face.classList.add('img');
+    } else {
+      face.textContent = label || '?';
+    }
+    coin.appendChild(face);
+    coinStage.appendChild(coin);
+    coin.addEventListener('animationend', ()=> { coin.remove(); });
+  }
+
+  let buffer = '';
+  let timer = null;
+  function flush(){
+    if (!buffer) return;
+    const uid = buffer; buffer='';
+    if (scanStatus) {
+      scanStatus.textContent = 'Wristband detected. Creating profile…';
+    }
+    if (msg) {
+      msg.textContent = '';
+    }
+    animateCoin('✓');
+    showForm(uid);
+  }
+  window.addEventListener('keydown', (e)=>{
+    const k = e.key;
+    if (k === 'Enter') { e.preventDefault(); flush(); return; }
+    if (/^[0-9A-Za-z]$/.test(k)) {
+      buffer += k;
+      clearTimeout(timer);
+      timer = setTimeout(flush, 250);
+    }
+  });
+
+  try {
+    const ws = new WebSocket('ws://127.0.0.1:8765');
+    ws.onmessage = (ev)=>{ buffer = ev.data.trim(); flush(); };
+  } catch(e) {}
+
+  document.getElementById('createForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const payload = {
+      email: document.getElementById('email').value,
+      rfid_uid: document.getElementById('rfid_uid').value
+    };
+    if (!payload.rfid_uid) { msg.textContent = 'Please scan your wristband first.'; return; }
+    const resp = await fetch('/players', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    if(resp.ok){
+      const p = await resp.json();
+      msg.textContent = 'Profile created for '+p.username+'. You can head to the game kiosks.';
+      e.target.reset();
+      formWrap.classList.add('hidden');
+      if (submitBtn) submitBtn.disabled = true;
+    } else {
+      const err = await resp.json().catch(()=>({}));
+      msg.textContent = 'Error: '+(err.detail || resp.statusText);
+    }
+  });
+})();
+</script>
+{% endblock %}

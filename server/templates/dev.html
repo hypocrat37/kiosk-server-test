@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Developer — Rooms{% endblock %}
+{% block body_class %}admin-page{% endblock %}
+{% block header %}
+  <img src="/static/Logo-01.png" alt="RoomZero Logo" class="brand-logo">
+{% endblock %}
+{% block content %}
+<section>
+  <h2>Developer Tools — Add Room</h2>
+  <p class="status small" id="devStatus">Fill in a game + kiosk and click Create.</p>
+
+  <div class="kiosk-block">
+    <div class="ops-links" style="margin-bottom:8px;">
+      <strong>Game</strong>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+      <label>Game ID
+        <input id="gameId" type="text" placeholder="photon_relay" />
+      </label>
+      <label>Game Name
+        <input id="gameName" type="text" placeholder="Photon Relay" />
+      </label>
+    </div>
+  </div>
+
+  <div class="kiosk-block">
+    <div class="ops-links" style="margin-bottom:8px;">
+      <strong>Kiosk</strong>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+      <label>Kiosk ID
+        <input id="kioskId" type="text" placeholder="photon1" />
+      </label>
+      <label>Location
+        <input id="kioskLocation" type="text" placeholder="Photon Relay Room" />
+      </label>
+    </div>
+    <label style="margin-top:8px;">Modes (comma‑separated)
+      <input id="kioskModes" type="text" placeholder="classic,timed,color_easy,color_hard" />
+    </label>
+    <label style="margin-top:8px;">Objectives (one per line)
+      <textarea id="kioskObjectives" rows="4" placeholder="Example: Try to beat your previous score&#10;Example: Work together to solve the puzzle"></textarea>
+    </label>
+    <div class="ops-links" style="margin-top:8px; margin-bottom:4px;">
+      <strong>Game Demands (0–5)</strong>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+      <label>Physical
+        <input id="kioskPhysical" type="number" min="0" max="5" placeholder="3" />
+      </label>
+      <label>Mental
+        <input id="kioskMental" type="number" min="0" max="5" placeholder="2" />
+      </label>
+      <label>Skill
+        <input id="kioskSkill" type="number" min="0" max="5" placeholder="4" />
+      </label>
+    </div>
+  </div>
+
+  <div class="ops-links">
+    <button class="btn" id="createRoomBtn">Create Game + Kiosk</button>
+    <button class="btn" id="loadKioskBtn" style="margin-left:8px;">Load Kiosk Config</button>
+    <button class="btn" id="deleteKioskBtn" style="margin-left:8px;">Delete Kiosk</button>
+  </div>
+
+  <div class="kiosk-block" id="envHint" style="display:none;">
+    <h3>Env hint (.env)</h3>
+    <p>Remember to add matching <code>GAME_KEYS</code> / <code>KIOSK_KEYS</code> entries in the kiosk <code>.env</code>.</p>
+    <pre id="envSnippet" style="white-space:pre-wrap;font-size:12px;background:#020617;border-radius:8px;padding:8px;border:1px solid #111827;"></pre>
+  </div>
+</section>
+<script>
+(function(){
+  const statusEl = document.getElementById('devStatus');
+  const btn = document.getElementById('createRoomBtn');
+  const deleteBtn = document.getElementById('deleteKioskBtn');
+  const loadBtn = document.getElementById('loadKioskBtn');
+
+  function setStatus(text, kind){
+    statusEl.textContent = text || '';
+    statusEl.setAttribute('data-kind', kind || 'ok');
+  }
+
+  async function ensureGame(gameId, gameName){
+    if (!gameId) return;
+    const payload = { game_id: gameId, name: gameName || gameId };
+    const resp = await fetch('/games', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(()=>({}));
+      if (!data.detail || String(data.detail).indexOf('Game exists') === -1) {
+        throw new Error(data.detail || 'Failed to create game');
+      }
+    }
+  }
+
+  async function createKiosk(kioskId, location, gameId, modesList, objectivesList){
+    const physicalRaw = document.getElementById('kioskPhysical').value.trim();
+    const mentalRaw = document.getElementById('kioskMental').value.trim();
+    const skillRaw = document.getElementById('kioskSkill').value.trim();
+    const traits = {};
+    const v = (val) => {
+      if (val === '') return null;
+      const n = Number(val);
+      if (!Number.isFinite(n)) return null;
+      return Math.min(5, Math.max(0, Math.round(n)));
+    };
+    const physVal = v(physicalRaw);
+    const mentVal = v(mentalRaw);
+    const skillVal = v(skillRaw);
+    if (physVal != null) traits.physical = physVal;
+    if (mentVal != null) traits.mental = mentVal;
+    if (skillVal != null) traits.skill = skillVal;
+
+    const body = {
+      kiosk_id: kioskId,
+      location: location || null,
+      game_id: gameId,
+      modes: modesList && modesList.length ? { list: modesList } : null,
+      objectives: objectivesList && objectivesList.length ? objectivesList : null,
+      traits: Object.keys(traits).length ? traits : null
+    };
+    const resp = await fetch('/kiosks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (resp.ok) return;
+
+    const data = await resp.json().catch(()=>({}));
+    const detail = String(data.detail || '');
+    if (detail.indexOf('Kiosk exists') !== -1) {
+      // Update existing kiosk config instead (location + modes)
+      const upd = {
+        location: location || null,
+        modes: modesList && modesList.length ? { list: modesList } : null,
+        objectives: objectivesList && objectivesList.length ? objectivesList : null,
+        traits: Object.keys(traits).length ? traits : null
+      };
+      const resp2 = await fetch(`/kiosks/${encodeURIComponent(kioskId)}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(upd)
+      });
+      if (!resp2.ok) {
+        const d2 = await resp2.json().catch(()=>({}));
+        throw new Error(d2.detail || 'Failed to update kiosk config');
+      }
+      return;
+    }
+    throw new Error(detail || 'Failed to create kiosk');
+  }
+
+  function genToken(len){
+    const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let out = '';
+    const arr = new Uint32Array(len);
+    if (window.crypto && crypto.getRandomValues) {
+      crypto.getRandomValues(arr);
+      for (let i=0;i<len;i++){ out += alphabet[arr[i] % alphabet.length]; }
+    } else {
+      for (let i=0;i<len;i++){ out += alphabet[Math.floor(Math.random()*alphabet.length)]; }
+    }
+    return out;
+  }
+
+  async function handleCreate(){
+    const gameId = document.getElementById('gameId').value.trim();
+    const gameName = document.getElementById('gameName').value.trim() || gameId;
+    const kioskId = document.getElementById('kioskId').value.trim();
+    const location = document.getElementById('kioskLocation').value.trim();
+    const modesRaw = document.getElementById('kioskModes').value.trim();
+    const objectivesRaw = document.getElementById('kioskObjectives').value.trim();
+
+    if (!gameId || !kioskId) {
+      setStatus('Please enter both game_id and kiosk_id.', 'err');
+      return;
+    }
+
+    const modesList = modesRaw
+      ? modesRaw.split(',').map(s => s.trim()).filter(Boolean)
+      : [];
+    const objectivesList = objectivesRaw
+      ? objectivesRaw.split('\n').map(s => s.trim()).filter(Boolean)
+      : [];
+
+    btn.disabled = true;
+    setStatus('Creating game and kiosk…', 'warn');
+
+    try {
+      await ensureGame(gameId, gameName);
+      await createKiosk(kioskId, location, gameId, modesList, objectivesList);
+
+      setStatus('Created/updated game and kiosk. Remember to add keys to .env.', 'ok');
+
+      const gameKey = genToken(24);
+      const kioskKey = genToken(24);
+      const snippet = [
+        '# Example entries for kiosk .env',
+        `GAME_KEYS=...,${gameId}:${gameKey}`,
+        `KIOSK_KEYS=...,${kioskId}:${kioskKey}`
+      ].join('\n');
+      const envBox = document.getElementById('envHint');
+      const envText = document.getElementById('envSnippet');
+      envText.textContent = snippet;
+      envBox.style.display = 'block';
+    } catch (e) {
+      console.error(e);
+      setStatus(e && e.message ? e.message : 'Error creating room.', 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', (e)=>{ e.preventDefault(); handleCreate(); });
+
+  async function handleLoad(){
+    const kioskId = document.getElementById('kioskId').value.trim();
+    if (!kioskId) {
+      setStatus('Enter kiosk_id to load.', 'err');
+      return;
+    }
+    setStatus(`Loading kiosk "${kioskId}"…`, 'warn');
+    try {
+      const resp = await fetch(`/kiosks/${encodeURIComponent(kioskId)}`);
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Failed to load kiosk config');
+      }
+      if (data.game_id) {
+        document.getElementById('gameId').value = data.game_id;
+      }
+      if (data.game_name) {
+        document.getElementById('gameName').value = data.game_name;
+      }
+      if (data.location != null) {
+        document.getElementById('kioskLocation').value = data.location || '';
+      }
+      if (data.modes && Array.isArray(data.modes.list)) {
+        document.getElementById('kioskModes').value = data.modes.list.join(',');
+      } else {
+        document.getElementById('kioskModes').value = '';
+      }
+      if (Array.isArray(data.objectives)) {
+        document.getElementById('kioskObjectives').value = data.objectives.join('\n');
+      } else {
+        document.getElementById('kioskObjectives').value = '';
+      }
+      const traits = data.traits || {};
+      document.getElementById('kioskPhysical').value = traits.physical != null ? traits.physical : '';
+      document.getElementById('kioskMental').value = traits.mental != null ? traits.mental : '';
+      document.getElementById('kioskSkill').value = traits.skill != null ? traits.skill : '';
+      setStatus(`Loaded kiosk "${kioskId}". Edit and click Create to save changes.`, 'ok');
+    } catch (e) {
+      console.error(e);
+      setStatus(e && e.message ? e.message : 'Error loading kiosk.', 'err');
+    }
+  }
+
+  loadBtn.addEventListener('click', (e)=>{ e.preventDefault(); handleLoad(); });
+
+  async function handleDelete(){
+    const kioskId = document.getElementById('kioskId').value.trim();
+    if (!kioskId) {
+      setStatus('Enter kiosk_id to delete.', 'err');
+      return;
+    }
+    if (!window.confirm(`Delete kiosk "${kioskId}" and clear its queue/sessions?`)) {
+      return;
+    }
+    deleteBtn.disabled = true;
+    setStatus(`Deleting kiosk ${kioskId}…`, 'warn');
+    try {
+      const resp = await fetch(`/kiosks/${encodeURIComponent(kioskId)}`, {
+        method: 'DELETE'
+      });
+      const data = await resp.json().catch(()=>({}));
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Failed to delete kiosk');
+      }
+      setStatus(`Deleted kiosk ${kioskId}.`, 'ok');
+    } catch (e) {
+      console.error(e);
+      setStatus(e && e.message ? e.message : 'Error deleting kiosk.', 'err');
+    } finally {
+      deleteBtn.disabled = false;
+    }
+  }
+
+  deleteBtn.addEventListener('click', (e)=>{ e.preventDefault(); handleDelete(); });
+})();
+</script>
+{% endblock %}
