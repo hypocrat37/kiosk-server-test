@@ -3,3 +3,8 @@ fly.toml
 __pycache__/
 .envrc
 .venv/
+.env
+kiosk.db
+*.pyc
+*.pyo
+.pytest_cache/

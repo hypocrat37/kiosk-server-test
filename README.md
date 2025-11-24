@@ -55,6 +55,19 @@ python client.py --server http://127.0.0.1:8000 --game_id laser_tag --api_key la
 http://127.0.0.1:8000/kiosk/profile
 ```
 
+## Deploy to Fly.io
+
+The included `fly.toml` targets the `kiosk-server-test` app in `sjc` and mounts a 1GB volume at `/data` for the SQLite database (`DATABASE_URL=sqlite:////data/kiosk.db`).
+
+1. Install `flyctl`, log in, and ensure `fly.toml` has your desired `app`/`primary_region`.
+2. Provision the volume: `fly volumes create kiosk_data --region sjc --size 1`.
+3. Set secrets (replace placeholders):  
+   `fly secrets set FERNET_KEY=<key> SECRET_KEY=<secret> KIOSK_KEYS=alpha1:alpha-secret,profile1:profile-secret GAME_KEYS=laser_tag:laser-secret ADMIN_USER=admin ADMIN_PASSWORD=<strong-pass>`
+4. Deploy: `fly deploy --remote-only`.
+5. On first deploy, seed the DB: `fly ssh console -C "cd /app && python scripts/init_db.py"`.
+
+If you switch to Postgres later, set `DATABASE_URL` to your Postgres URL and remove the volume mount from `fly.toml`.
+
 ---
 
 ## Security

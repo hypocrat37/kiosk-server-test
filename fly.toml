@@ -6,6 +6,11 @@
 app = 'kiosk-server-test'
 primary_region = 'sjc'
 
+[env]
+  PORT = '8000'
+  DATABASE_URL = 'sqlite:////data/kiosk.db'
+  SERVER_HOST = 'https://kiosk-server-test.fly.dev'
+
 [build]
 
 [http_service]
@@ -21,3 +26,8 @@ primary_region = 'sjc'
   cpu_kind = 'shared'
   cpus = 1
   memory_mb = 1024
+
+[[mounts]]
+  source = 'kiosk_data'
+  destination = '/data'
+  initial_size = '1gb'
