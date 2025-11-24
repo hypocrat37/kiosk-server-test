@@ -12,6 +12,7 @@ primary_region = 'sjc'
   SERVER_HOST = 'https://kiosk-server-test.fly.dev'
 
 [build]
+  dockerfile = "Dockerfile"
 
 [http_service]
   internal_port = 8000
